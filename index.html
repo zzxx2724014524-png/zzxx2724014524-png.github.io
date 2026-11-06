@@ -1,0 +1,353 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>比大小·炸金花</title>
+<style>
+html{background:#0b5d3b}
+body{margin:0 auto;max-width:375px;min-height:100vh;position:relative}
+text{display:inline}
+.wrap,.bar{max-width:375px;margin:0 auto}
+.bar.bar{left:50%;right:auto;transform:translateX(-50%);width:375px;box-sizing:border-box}
+button{display:block;border:none;cursor:pointer;font-family:inherit}
+.navbar{background:#0b5d3b;color:#fff;text-align:center;font-size:17px;padding:12px 0;font-weight:600;border-bottom:1px solid rgba(255,255,255,.1)}
+body {
+  background: #0b5d3b;
+  color: #fff;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  min-height: 100%;
+}
+.wrap {
+  padding: 16px 16px 0;
+  box-sizing: border-box;
+}
+.header { display: flex; flex-direction: column; align-items: center; margin-bottom: 12px; }
+.title { font-size: 24px; font-weight: 700; letter-spacing: 2px; color: #ffd76a; }
+.sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+
+.section {
+  background: rgba(0,0,0,0.18);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.sec-title { font-size: 17px; font-weight: 600; }
+.sec-tip { font-size: 12px; color: rgba(255,255,255,0.6); }
+
+.row { display: flex; justify-content: space-between; }
+.row.center { justify-content: center; }
+
+.result {
+  margin-top: 11px;
+  text-align: center;
+  font-size: 16px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.badge {
+  display: inline-block;
+  background: #ffd76a; color: #5a3a00;
+  font-weight: 700; font-size: 17px;
+  padding: 3px 14px; border-radius: 20px; margin-bottom: 5px;
+}
+.muted { color: rgba(255,255,255,0.55); }
+
+/* ---------- 扑克牌 ---------- */
+.card {
+  position: relative;
+  border-radius: 9px;
+  box-shadow: 0 4px 9px rgba(0,0,0,0.35);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.card.big { width: 140px; height: 200px; }
+.card.mid { width: 100px; height: 145px; }
+
+.card.face { background: #fffdf7; border: 1px solid #e6e0d0; }
+.card.red { color: #d0272f; }
+.card.black { color: #1d1d1f; }
+
+.corner {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center;
+  line-height: 1;
+}
+.corner.tl { top: 7px; left: 7px; }
+.corner.br { bottom: 7px; right: 7px; transform: rotate(180deg); }
+.c-rank { font-weight: 700; font-size: 22px; }
+.c-suit { font-size: 17px; margin-top: 2px; }
+.card.big .c-rank { font-size: 28px; }
+.card.big .c-suit { font-size: 21px; }
+
+.pip {
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 55px; line-height: 1;
+}
+.card.big .pip { font-size: 85px; }
+
+.card.back {
+  background: #b3202a;
+  border: 4px solid #fff;
+}
+.back-inner {
+  position: absolute; left: 4px; right: 4px; top: 4px; bottom: 4px;
+  border-radius: 5px;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.18) 0, rgba(255,255,255,0.18) 3px, transparent 3px, transparent 9px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,0.18) 0, rgba(255,255,255,0.18) 3px, transparent 3px, transparent 9px);
+  display: flex; align-items: center; justify-content: center;
+}
+.back-mark {
+  color: #ffd76a; font-size: 22px; font-weight: 700;
+  border: 2px solid #ffd76a; border-radius: 50%;
+  width: 40px; height: 40px; line-height: 38px; text-align: center;
+  background: #b3202a;
+}
+
+/* 未发牌占位 */
+.empty { display: flex; flex-direction: column; align-items: center; padding-top: 30px; }
+.empty-cards { display: flex; margin-bottom: 20px; }
+.tilt-l { transform: rotate(-8deg); margin-right: -20px; }
+.tilt-r { transform: rotate(8deg); }
+.hint { font-size: 15px; color: rgba(255,255,255,0.8); text-align: center; padding: 0 20px; line-height: 1.6; }
+
+.spacer { height: 150px; }
+
+/* ---------- 底部操作栏 ---------- */
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: rgba(6,58,36,0.96);
+  box-shadow: 0 -3px 10px rgba(0,0,0,0.25);
+}
+.bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.round { font-size: 13px; color: rgba(255,255,255,0.7); }
+.toggle {
+  font-size: 13px; padding: 4px 11px;
+  border: 1px solid rgba(255,255,255,0.5); border-radius: 20px;
+}
+.btn {
+  width: 100% !important;
+  height: 50px; line-height: 50px;
+  border-radius: 25px;
+  font-size: 18px; font-weight: 700;
+  padding: 0;
+}
+.btn.primary { background: #ffd76a; color: #5a3a00; }
+.btn.ghost {
+  margin-top: 8px;
+  height: 38px; line-height: 38px; font-size: 14px; font-weight: 400;
+  background: transparent; color: rgba(255,255,255,0.85);
+  border: 1px solid rgba(255,255,255,0.4);
+}
+
+
+</style></head><body>
+<div class="navbar">比大小·炸金花</div>
+<div id="app"></div>
+<script>var module={exports:{}};</script>
+<script>// 比大小 · 炸金花 —— 纯逻辑模块（无微信 API 依赖，可在 Node 中单测）
+// 规则：两副扑克，共 104 张，不含大小王；只看自己的 4 张牌。
+
+var SUITS = [
+  { key: 'S', symbol: '♠', name: '黑桃', color: 'black', order: 4 },
+  { key: 'H', symbol: '♥', name: '红桃', color: 'red', order: 3 },
+  { key: 'C', symbol: '♣', name: '梅花', color: 'black', order: 2 },
+  { key: 'D', symbol: '♦', name: '方块', color: 'red', order: 1 }
+];
+// 点数：2 最小，A 最大（比大小与炸金花单张比较都用此顺序）
+var RANKS = [
+  { label: '2', value: 2 }, { label: '3', value: 3 }, { label: '4', value: 4 },
+  { label: '5', value: 5 }, { label: '6', value: 6 }, { label: '7', value: 7 },
+  { label: '8', value: 8 }, { label: '9', value: 9 }, { label: '10', value: 10 },
+  { label: 'J', value: 11 }, { label: 'Q', value: 12 }, { label: 'K', value: 13 },
+  { label: 'A', value: 14 }
+];
+
+var HAND_TYPES = {
+  BAOZI: { level: 6, name: '豹子' },
+  TONGHUASHUN: { level: 5, name: '同花顺' },
+  TONGHUA: { level: 4, name: '同花' },
+  SHUNZI: { level: 3, name: '顺子' },
+  DUIZI: { level: 2, name: '对子' },
+  DANZHANG: { level: 1, name: '单张' }
+};
+
+function createDeck(decks) {
+  decks = decks || 2;
+  var cards = [];
+  for (var d = 0; d < decks; d++) {
+    for (var s = 0; s < SUITS.length; s++) {
+      for (var r = 0; r < RANKS.length; r++) {
+        var suit = SUITS[s], rank = RANKS[r];
+        cards.push({
+          id: 'd' + d + '-' + suit.key + rank.label,
+          deck: d,
+          suit: suit.key,
+          suitSymbol: suit.symbol,
+          suitName: suit.name,
+          suitOrder: suit.order,
+          color: suit.color,
+          rank: rank.label,
+          value: rank.value
+        });
+      }
+    }
+  }
+  return cards;
+}
+
+// Fisher–Yates 洗牌；rng 可注入以便测试
+function shuffle(cards, rng) {
+  rng = rng || Math.random;
+  var a = cards.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(rng() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+// 从新洗好的 104 张牌中发 n 张（默认 4）
+function deal(n, rng) {
+  n = n || 4;
+  return shuffle(createDeck(2), rng).slice(0, n);
+}
+
+function cardName(c) {
+  return c.suitName + c.rank;
+}
+
+// 比大小：单张点数（A 最大，2 最小）。同点数时可按花色 ♠>♥>♣>♦ 决胜。
+function singleScore(card) {
+  return card.value * 10 + card.suitOrder;
+}
+function describeSingle(card) {
+  return cardName(card) + '（点数 ' + card.value + (card.value === 14 ? '，最大' : card.value === 2 ? '，最小' : '') + '）';
+}
+function compareSingle(a, b, useSuit) {
+  if (a.value !== b.value) return a.value > b.value ? 1 : -1;
+  if (useSuit && a.suitOrder !== b.suitOrder) return a.suitOrder > b.suitOrder ? 1 : -1;
+  return 0;
+}
+
+// 炸金花：评估 3 张牌
+// 返回 { type, level, name, ranks(用于比较的降序关键点数), desc, score }
+function evaluateThree(cards) {
+  if (!cards || cards.length !== 3) throw new Error('炸金花需要正好 3 张牌');
+  var vals = cards.map(function (c) { return c.value; }).sort(function (x, y) { return y - x; });
+  var flush = cards[0].suit === cards[1].suit && cards[1].suit === cards[2].suit;
+  var trips = vals[0] === vals[1] && vals[1] === vals[2];
+  var pair = !trips && (vals[0] === vals[1] || vals[1] === vals[2]);
+
+  var straight = false, straightHigh = 0;
+  if (!trips && !pair) {
+    if (vals[0] - vals[1] === 1 && vals[1] - vals[2] === 1) { straight = true; straightHigh = vals[0]; }
+    else if (vals[0] === 14 && vals[1] === 3 && vals[2] === 2) { straight = true; straightHigh = 3; } // A-2-3 最小顺子
+  }
+
+  var t, key;
+  if (trips) { t = HAND_TYPES.BAOZI; key = [vals[0]]; }
+  else if (straight && flush) { t = HAND_TYPES.TONGHUASHUN; key = [straightHigh]; }
+  else if (flush) { t = HAND_TYPES.TONGHUA; key = vals; }
+  else if (straight) { t = HAND_TYPES.SHUNZI; key = [straightHigh]; }
+  else if (pair) {
+    t = HAND_TYPES.DUIZI;
+    var p = vals[0] === vals[1] ? vals[0] : vals[1];
+    var k = vals[0] === vals[1] ? vals[2] : vals[0];
+    key = [p, k];
+  } else { t = HAND_TYPES.DANZHANG; key = vals; }
+
+  // 数值化分数：level * 15^3 + 关键点数
+  var score = t.level;
+  for (var i = 0; i < 3; i++) score = score * 15 + (key[i] || 0);
+
+  return {
+    level: t.level,
+    name: t.name,
+    ranks: key,
+    score: score,
+    desc: describeThree(t, key, vals, cards)
+  };
+}
+
+function label(v) {
+  for (var i = 0; i < RANKS.length; i++) if (RANKS[i].value === v) return RANKS[i].label;
+  return String(v);
+}
+
+function describeThree(t, key, vals, cards) {
+  switch (t.level) {
+    case 6: return '豹子 ' + label(key[0]) + label(key[0]) + label(key[0]) + '！';
+    case 5: return '同花顺 ' + cards[0].suitSymbol + ' ' + straightText(key[0]);
+    case 4: return '同花 ' + cards[0].suitSymbol + '（' + vals.map(label).join(' ') + '）';
+    case 3: return '顺子 ' + straightText(key[0]);
+    case 2: return '对子 ' + label(key[0]) + label(key[0]) + '，带 ' + label(key[1]);
+    default: return '单张 ' + label(vals[0]) + ' 大（' + vals.map(label).join(' ') + '）';
+  }
+}
+function straightText(high) {
+  if (high === 3) return 'A-2-3';
+  return label(high - 2) + '-' + label(high - 1) + '-' + label(high);
+}
+
+// 比较两手炸金花牌：>0 表示 a 大，<0 表示 b 大，0 表示一样大（不比花色）
+function compareThree(a, b) {
+  var ea = a.score !== undefined ? a : evaluateThree(a);
+  var eb = b.score !== undefined ? b : evaluateThree(b);
+  return ea.score === eb.score ? 0 : (ea.score > eb.score ? 1 : -1);
+}
+
+module.exports = {
+  SUITS: SUITS,
+  RANKS: RANKS,
+  HAND_TYPES: HAND_TYPES,
+  createDeck: createDeck,
+  shuffle: shuffle,
+  deal: deal,
+  cardName: cardName,
+  singleScore: singleScore,
+  describeSingle: describeSingle,
+  compareSingle: compareSingle,
+  evaluateThree: evaluateThree,
+  compareThree: compareThree
+};
+</script>
+<script>
+var poker=module.exports;
+var S={stage:0,first:null,rest:[],hidden:false,singleText:'',threeName:'',threeText:'',round:0};
+function card(c,face,size){
+  if(!face) return '<div class="card '+size+' back"><div class="back-inner"><span class="back-mark">牌</span></div></div>';
+  var corner=function(p){return '<div class="corner '+p+'"><span class="c-rank">'+c.rank+'</span><span class="c-suit">'+c.suitSymbol+'</span></div>'};
+  return '<div class="card '+size+' face '+c.color+'">'+corner('tl')+'<span class="pip">'+c.suitSymbol+'</span>'+corner('br')+'</div>';
+}
+function render(){
+  var h='<div class="wrap"><div class="header"><span class="title">比大小 · 炸金花</span><span class="sub">两副牌 104 张 · 无大小王 · 每局发 4 张</span></div>';
+  if(S.stage===0){
+    h+='<div class="empty"><div class="empty-cards"><div class="card mid back tilt-l"><div class="back-inner"><span class="back-mark">牌</span></div></div><div class="card mid back tilt-r"><div class="back-inner"><span class="back-mark">牌</span></div></div></div><span class="hint">点「发牌」开始。第 1 张用来比大小，另外 3 张凑炸金花。</span></div>';
+  } else {
+    h+='<div class="section"><div class="sec-head"><span class="sec-title">比大小</span><span class="sec-tip">第 1 张</span></div><div class="row center">'+card(S.first,S.stage>=2&&!S.hidden,'big')+'</div>';
+    if(S.stage>=2) h+='<div class="result">'+(S.hidden?'<span class="muted">（已遮挡）</span>':'<span>'+S.singleText+'</span>')+'</div>';
+    h+='</div><div class="section"><div class="sec-head"><span class="sec-title">炸金花</span><span class="sec-tip">另外 3 张</span></div><div class="row">'+S.rest.map(function(c){return card(c,S.stage>=3&&!S.hidden,'mid')}).join('')+'</div>';
+    if(S.stage>=3) h+='<div class="result">'+(S.hidden?'<span class="muted">（已遮挡）</span>':'<span class="badge">'+S.threeName+'</span><span>'+S.threeText+'</span>')+'</div>';
+    h+='</div>';
+  }
+  h+='<div class="spacer"></div></div><div class="bar">';
+  if(S.stage>0) h+='<div class="bar-top"><span class="round">第 '+S.round+' 局</span><div class="toggle" onclick="act(\'hide\')">'+(S.hidden?'👁 显示牌面':'🙈 遮挡牌面')+'</div></div>';
+  var main=['发牌','打开第一张','打开另外三张','再来一局'][S.stage], ma=['deal','first','rest','deal'][S.stage];
+  h+='<button class="btn primary" onclick="act(\''+ma+'\')">'+main+'</button>';
+  if(S.stage===1||S.stage===2) h+='<button class="btn ghost" onclick="act(\'deal\')">重新发牌</button>';
+  document.getElementById('app').innerHTML=h+'</div>';
+}
+function act(a){
+  if(a==='deal'){var hand=poker.deal(4);S={stage:1,first:hand[0],rest:hand.slice(1),hidden:false,singleText:'',threeName:'',threeText:'',round:S.round+1};}
+  else if(a==='first'&&S.stage===1){S.stage=2;S.hidden=false;S.singleText=poker.describeSingle(S.first);}
+  else if(a==='rest'&&S.stage===2){var r=poker.evaluateThree(S.rest);S.stage=3;S.hidden=false;S.threeName=r.name;S.threeText=r.desc;}
+  else if(a==='hide'&&S.stage>0){S.hidden=!S.hidden;}
+  render();
+}
+render();
+// 自动截图用：?auto=N 依次执行 N 步
+var m=location.search.match(/auto=(\d)/); if(m){for(var i=0;i<+m[1];i++)act(['deal','first','rest','hide'][i]);}
+</script></body></html>
