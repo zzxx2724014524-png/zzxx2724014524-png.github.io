@@ -1,0 +1,33 @@
+name: Decode adao assets
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'adao/_bin/**'
+      - '.github/workflows/adao-decode.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode assets and remove temporary files
+        run: |
+          set -euo pipefail
+          test -f adao/_bin/assets.tar.b64
+          base64 -d adao/_bin/assets.tar.b64 | tar -x -C adao
+          test -f adao/assets/fish/gt.png
+          test -f adao/assets/bite.mp3
+          test -f adao/js/game.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add adao/assets
+          git rm -r adao/_bin
+          git rm --ignore-unmatch .github/workflows/adao-decode.yml
+          git status --porcelain
+          git commit -m "Add decoded adao game assets and remove temporary decode files"
+          git push
