@@ -197,25 +197,21 @@ cv.addEventListener('pointerdown', e => {
   e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (_) {}
   kick();
   const [x, y] = toLogical(e); const b = hitBtn(x, y);
-  input.ptrs.set(e.pointerId, { x0: x, y0: y, t0: performance.now(), btn: b && !b.disabled ? b.id : null, swiped: false });
   unlockAudio();
+  // 冲刺圈：第二根手指点圈（第一根手指继续按住收线，互不影响）；鼠标单指也可直接点圈
+  const others = input.holdIds.size > 0 || input.keyHold;
+  if (scene.tapAt && scene.tapAt(x, y, others)) { input.ptrs.set(e.pointerId, { x0: x, y0: y, t0: performance.now(), btn: null, ring: true }); return; }
+  input.ptrs.set(e.pointerId, { x0: x, y0: y, t0: performance.now(), btn: b && !b.disabled ? b.id : null });
   if (b && !b.disabled) { input.downOn = b.id; if (b.hold) input.holdIds.add(e.pointerId + ':' + b.id); }
   else if (scene.holdAnywhere && scene.holdAnywhere()) input.holdIds.add(e.pointerId + ':reel');   // 搏鱼时按住屏幕任意处 = 收线（单手）
   scene.down && scene.down(x, y, b && !b.disabled ? b.id : null);
-});
-cv.addEventListener('pointermove', e => {
-  const p = input.ptrs.get(e.pointerId); if (!p) return; const [x, y] = toLogical(e);
-  if (p.swiped || p.btn || performance.now() - p.t0 > 450) return;
-  const dx = x - p.x0, dy = y - p.y0;
-  if (Math.abs(dx) > 26 && Math.abs(dx) > Math.abs(dy)) { p.swiped = true; scene.swipe && scene.swipe(dx > 0 ? 1 : -1); dirty = true; }
-  else if (dy < -26 && Math.abs(dy) > Math.abs(dx)) { p.swiped = true; scene.swipe && scene.swipe('up'); dirty = true; }
 });
 function ptrUp(e) {
   kick();
   const p = input.ptrs.get(e.pointerId); input.ptrs.delete(e.pointerId);
   for (const k of Array.from(input.holdIds)) if (k.indexOf(e.pointerId + ':') === 0) input.holdIds.delete(k);
   if (!p) return; const [x, y] = toLogical(e); const b = hitBtn(x, y);
-  if (p.btn && b && b.id === p.btn && !p.swiped) scene.click && scene.click(p.btn);
+  if (p.btn && b && b.id === p.btn) scene.click && scene.click(p.btn);
   if (input.downOn === p.btn) input.downOn = null;
 }
 cv.addEventListener('pointerup', ptrUp); cv.addEventListener('pointercancel', ptrUp);
@@ -228,9 +224,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 window.addEventListener('keydown', e => {
   if (e.repeat) return; kick();
   if (e.code === 'Space') { input.keyHold = true; e.preventDefault(); scene.down && scene.down(-1, -1, 'key'); }
-  if (e.code === 'ArrowLeft') scene.swipe && scene.swipe(-1);
-  if (e.code === 'ArrowRight') scene.swipe && scene.swipe(1);
-  if (e.code === 'ArrowUp') scene.swipe && scene.swipe('up');
+  if (e.code === 'Enter' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'ArrowUp') scene.tapRing && scene.tapRing();   // 调试：键盘点圈
   if (e.code === 'KeyA') scene.click && scene.click('adao');
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') input.keyHold = false; });
@@ -523,6 +517,7 @@ function rollWeight(f) {
 function sizeClass(f, w) { const [a, b, c] = f.w; return w > c ? '巨物' : w > b ? '大物' : w < a + (b - a) * .35 ? '小' : '标准'; }
 function fmtW(w) { return w < 1 ? Math.round(w * 1000) + ' g' : w.toFixed(w < 10 ? 2 : 1) + ' kg'; }
 
+const RING_T = 1.5, RING_R = 24, RING_HIT = 34, RING_X0 = 44, RING_X1 = 316, RING_Y0 = 236, RING_Y1 = 446, RING_GAP = 90;   // 冲刺圈：时长 1.5 s、画半径 24、判定半径 34；只在水面线(HZ=200)以下的海里出现（圈顶也在水下，底部离操作区 484 有余量），每次换新位置且与上一个圈相距 ≥ 90 px
 const HZ = 200;                     // 水面线（侧视剖面：上面是天空和船，下面是水下）
 const Trip = {
   start(spot) { this.paused = false; this.celebrate = 0; this.landing = null; this.visitor = null; this.hook = null; this._reeling = false; this.spot = spot; this.casts = 0; this.log = []; this.coins = 0; this.phase = 'idle'; this.pt = 0; this.msg = ''; this.result = null; this.fight = null; this.tip = TIPS[Math.floor(Math.random() * TIPS.length)]; this.initSchools(); },
@@ -594,10 +589,16 @@ const Trip = {
     let type = ai.style; const r = Math.random();
     if (r < 0.2) type = type === 'lateral' ? 'run' : 'lateral';               // 偶尔换冲法
     F.btype = type; F.bdir = type === 'lateral' ? (Math.random() < .5 ? -1 : 1) : type === 'run' ? 1 : 'up';
-    F.burst = ai.dur * (0.6 + 0.6 * F.stamina) * (mult || 1);
+    F.burst = Math.max(RING_T, ai.dur * (0.6 + 0.6 * F.stamina) * (mult || 1));
+    // 随机位置出圈（避开顶部 HUD/提示、底部操作区）；复用对象，不分配
+    const R = F.ring || (F.ring = { on: false, x: 0, y: 0, t: 0 });
+    const P = this.lastRing; let nx = 0, ny = 0;
+    for (let k = 0; k < 30; k++) { nx = Math.round(RING_X0 + Math.random() * (RING_X1 - RING_X0)); ny = Math.round(RING_Y0 + Math.random() * (RING_Y1 - RING_Y0)); if (!P || (nx - P.x) * (nx - P.x) + (ny - P.y) * (ny - P.y) >= RING_GAP * RING_GAP) break; }
+    if (P && (nx - P.x) * (nx - P.x) + (ny - P.y) * (ny - P.y) < RING_GAP * RING_GAP) { nx = P.x < W / 2 ? RING_X1 - 20 : RING_X0 + 20; }   // 兜底：放到另一侧
+    R.on = true; R.t = 0; R.x = nx; R.y = ny; this.lastRing = { x: nx, y: ny };
     vibe(30, 200); shake(2, 0.2);
     const pos = this.fishPos(); if (pos.y < HZ + 40) { splash(pos.x, HZ, 12); synth('splash', 0.6); }
-    toast(msg || (type === 'lateral' ? (F.bdir < 0 ? '鱼往左冲！向左滑摆竿' : '鱼往右冲！向右滑摆竿') : type === 'run' ? '鱼在远跑！松手让线' : '鱼往下钻！松手，向上滑扬竿'), C.yellow, 1.4);
+    toast(msg ? msg + ' 快点圈！' : (type === 'lateral' ? '鱼在横冲！' : type === 'run' ? '鱼在远跑！' : '鱼往下钻！') + '按住别松，另一指点圈', C.yellow, 1.4);
   },
   spr(f, w) { return fishSprite(f.id, fishPx(f, w)); },
   hookSpr() { return this.hook ? this.spr(this.hook.f, this.hook.w) : null; },
@@ -668,8 +669,10 @@ const Trip = {
     const reel = holding('reel');
     if (reel && !this._reeling) play('reel', 0.95 + Math.random() * 0.1); if (!reel && this._reeling) stop('reel'); this._reeling = reel;
     if (reel) setRate('reel', 0.85 + F.tension * 0.4);
+    // 冲刺圈计时（1.5 s）
+    if (F.ring && F.ring.on) { F.ring.t += dt; if (F.ring.t >= RING_T) { F.ring.on = false; F.ringMiss = (F.ringMiss || 0) + 1; F.tension = Math.min(0.97, F.tension + 0.12); F.dist += 2; toast('没点到！鱼又冲出去一段', C.red, 1.1); vibe(60); } }
     // 冲刺调度
-    if (F.burst > 0) { F.burst -= dt; if (F.burst <= 0) { F.burst = 0; F.btype = null; F.nextBurst = this.burstGap(); } }
+    if (F.burst > 0) { F.burst -= dt; if (F.burst <= 0) { F.burst = 0; F.btype = null; F.nextBurst = this.burstGap(); if (F.ring) F.ring.on = false; } }
     else if (F.stamina > 0.08) { F.nextBurst -= dt; if (F.nextBurst <= 0) this.startBurst(1); }
     if (!F.burst && F.dist < 4 && F.stamina > 0.35) this.startBurst(0.8, '到船边又冲了！');
     const bursting = F.burst > 0, typeK = { lateral: 0.4, run: 1, dive: 0.55 }[F.btype] || 0, sta = F.stamina, REEL = 3.0;
@@ -680,7 +683,7 @@ const Trip = {
     } else {
       let rise;
       if (reel) {
-        rise = 0.18 + 0.32 * ai.pull * F.szK * (0.4 + 0.6 * sta) + (bursting ? 0.35 + 0.55 * ai.pull : 0);
+        rise = 0.18 + 0.32 * ai.pull * F.szK * (0.4 + 0.6 * sta) + (bursting ? 0.12 + 0.22 * ai.pull : 0);
         if (F.tension > 0.8) rise *= 0.35;
         if (!bursting) { F.dist -= REEL * (0.35 + 0.65 * (1 - sta)) * dt; F.stamina -= F.dmg * dt; }
         else { F.dist += ai.burst * typeK * (0.5 + 0.5 * sta) * 0.45 * dt; F.stamina -= F.dmg * 0.3 * dt; }
@@ -714,13 +717,22 @@ const Trip = {
     if (u > 0.75 && u < 1.15 && Math.random() < 0.5) splash(160 + (Math.random() - .5) * 30, HZ, 3);
     if (u >= L.dur) this.land();
   },
-  swipe(dir) {
-    if (this.phase !== 'fight' || this.paused) return; const F = this.fight;
-    if (F.burst && dir === F.bdir) {
-      F.energy = Math.min(3, F.energy + 1); F.burst = 0; F.btype = null; F.nextBurst = this.burstGap(); F.stamina -= 0.04;
-      const pos = this.fishPos(); firework(pos.x, pos.y, 12); vibe(20);
-      toast((dir === 'up' ? '扬竿' : '摆竿') + ' +1 格（' + F.energy + '/3）', C.gold, 1.2);
-    } else if (F.burst) { F.tension = Math.min(1, F.tension + 0.08); toast(F.bdir === 'up' ? '鱼在下钻，要向上滑' : '方向反了！跟着鱼头方向滑', C.red, 1.2); }
+  // 冲刺圈：点中 = 张力 -0.15、阿导一招 +1 格、鱼耐力 -4%、本次冲刺结束；超时 = 张力 +0.12 且鱼冲出 2 m；有手指按住时点到圈外 = 张力 +0.05
+  ringOn() { const F = this.phase === 'fight' && !this.paused ? this.fight : null; return F && F.ring && F.ring.on ? F.ring : null; },
+  tapAt(x, y, others) {
+    const R = this.ringOn(); if (!R) return false;
+    const dx = x - R.x, dy = y - R.y;
+    if (dx * dx + dy * dy <= RING_HIT * RING_HIT) { this.tapRing(); return true; }
+    if (others && y < 470) { const F = this.fight; F.tension = Math.min(0.97, F.tension + 0.05); toast('点偏了！点圈里', C.red, 0.9); vibe(15); }
+    return false;
+  },
+  tapRing() {
+    const R = this.ringOn(); if (!R) return; const F = this.fight;
+    R.on = false; F.ringHit = (F.ringHit || 0) + 1;
+    F.energy = Math.min(3, F.energy + 1); F.burst = 0; F.btype = null; F.nextBurst = this.burstGap(); F.stamina = Math.max(0, F.stamina - 0.04);
+    F.tension = Math.max(0.1, F.tension - 0.15);
+    firework(R.x, R.y, 16); vibe(20);
+    toast('点中！张力 -15%  一招 +1 格（' + F.energy + '/3）', C.gold, 1.2);
   },
   down(x, y, id) {
     if (this.paused) { this.paused = false; releaseAllInput(); return; }
@@ -898,12 +910,19 @@ const Trip = {
     const fxp = Math.round(dx0 + (dx1 - dx0) * Math.min(1, F.dist / Math.max(20, F.dist0 * 1.3))); rect(fxp - 3, dy + 1, 7, 4, C.gold); rect(fxp + 4, dy, 2, 6, C.gold);
     txt('距船 ' + Math.max(0, F.dist).toFixed(0) + ' m', 16, 58, '#aad2f0');
     if (this.hook.guaranteed) txt('上次跑的那条！', W - 12, 84, C.gold, { align: 'right', outline: C.outl });
-    if (F.burst > 0 && pos) {
-      const label = F.btype === 'lateral' ? (F.bdir < 0 ? '◀ 向左滑' : '向右滑 ▶') : F.btype === 'run' ? '远跑！向右滑跟竿' : '下钻！向上滑扬竿';
-      const x0 = Math.max(8, Math.min(W - 136, pos.x - 64)), y0 = Math.max(HZ + 4, pos.y - 56);
-      rect(x0, y0, 128, 22, 'rgba(10,20,40,.9)', C.gold); txt(label, x0 + 64, y0 + 4, C.gold, { align: 'center' });
-    }
+    if (F.ring && F.ring.on) this.renderRing(F.ring, t);
     if (F.slack > 0.9) txt('线松了！快收线', W / 2, 130, C.yellow, { align: 'center', size: 24, outline: C.outl });
+  },
+  renderRing(R, t) {
+    const F = this.fight, k = Math.min(1, R.t / RING_T), late = k > 0.66;
+    const pxRing = (r, c, sz) => { const n = Math.max(16, Math.round(r * 1.6)); for (let i = 0; i < n; i++) { const a = i / n * 6.2832; rect(Math.round(R.x + r * Math.cos(a) - sz / 2), Math.round(R.y + r * Math.sin(a) - sz / 2), sz, sz, c); } };
+    ctx.fillStyle = 'rgba(255,226,110,.42)'; ctx.beginPath(); ctx.arc(R.x, R.y, RING_R, 0, 7); ctx.fill();
+    pxRing(RING_R + 1, C.outl, 4); pxRing(RING_R, late && Math.sin(t * 30) > 0 ? C.red : C.gold, 2);
+    pxRing(RING_R + 4 + Math.round((1 - k) * 26), late ? C.red : C.white, 2);          // 外圈收缩 = 倒计时
+    rect(R.x - 3, R.y - 3, 6, 6, C.outl); rect(R.x - 2, R.y - 2, 4, 4, C.white);
+    const lbl = (F.btype === 'lateral' ? '横冲！' : F.btype === 'run' ? '远跑！' : '下钻！') + '点圈';
+    const lw = tw(lbl) + 12, ly = R.y - RING_R - 26 < HZ + 2 ? R.y + RING_R + 8 : R.y - RING_R - 26;   // 标签也留在水下
+    rect(R.x - lw / 2, ly, lw, 18, 'rgba(10,20,40,.9)', late ? C.red : C.gold); txt(lbl, R.x, ly + 2, late ? C.red : C.gold, { align: 'center' });
   },
   renderFightPanel(P0, t) {
     const F = this.fight, danger = F.tension >= .8, fl = danger && Math.sin(t * 22) > 0;
@@ -912,7 +931,7 @@ const Trip = {
     const lbl = danger ? '松手！' : F.tension >= .55 ? '偏高' : F.tension < .08 ? '太松' : '安全';
     txt(lbl, 300, P0 + 2, danger ? C.red : F.tension >= .55 ? '#be8214' : F.tension < .08 ? '#be8214' : C.grn);
     if (F.red > 0) rect(52, P0 + 21, Math.round(240 * Math.min(1, F.red / 1.5)), 3, C.red);
-    const hint = F.burst > 0 ? (F.btype === 'dive' ? '鱼在下钻！松手让线，向上滑扬竿' : F.btype === 'run' ? '鱼在远跑！松手让线，向右滑跟竿' : '鱼在横冲！松手，顺着鱼头方向滑') : F.slack > .6 ? '线太松会脱钩，按住收线！' : '按住收线，进红区就松手（红区 1.5 秒跑鱼）';
+    const hint = F.ring && F.ring.on ? '鱼在冲！按住别松，另一只手指点圈' : F.burst > 0 ? '鱼还在冲，张力高就松一下' : F.slack > .6 ? '线太松会脱钩，按住收线！' : '按住收线，进红区就松手（红区 1.5 秒跑鱼）';
     txt(hint, 16, P0 + 28, F.slack > .6 ? C.red : C.ink);
     const hold = holding('reel');
     button('reel', 16, P0 + 48, 200, 64, hold ? '收线中…' : '按住 收线', hold ? '#2a70aa' : C.blue, C.blueD, { hold: true, size: 24 });
@@ -933,7 +952,7 @@ const Trip = {
     fishImg(this.hook.f.id, W / 2, 262, 160, 60, true);
     txt('？？？', W / 2, 296, C.ink, { align: 'center' });
     txt('别灰心：下一竿必遇同一条！', W / 2, 320, C.orange, { align: 'center' });
-    wrap('【阿导知识】中鱼后别猛摇，竿子保持弯，匀速收线；鱼冲的时候松手让线。', 46, 346, 268, C.brown);
+    wrap('【阿导知识】中鱼后别猛摇，竿子保持弯，匀速收线；鱼冲的时候别慌，张力顶红就松一下。', 46, 346, 268, C.brown);
     button('next', 70, 392, 220, 36, this.castsLeft() > 0 ? '再来一竿' : '返航结算', C.orange, '#782814');
   },
   renderCatch(t) {
